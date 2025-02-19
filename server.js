@@ -1,7 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const connectToDB = require('./database/Mongo.database');
-const { divisionRoutes } = require('./config/routes.conf');
+const { divisionRoutes, positionRoutes } = require('./config/routes.conf');
 
 // Conf app and port
 const app = express();
@@ -14,7 +14,8 @@ connectToDB();
 app.use(express.json());
 
 // Routes
-app.use('/api/divisi', divisionRoutes);
+app.use('/api/division', divisionRoutes);
+app.use('/api/position', positionRoutes);
 
 // Listener
 app.listen(PORT, () => {
