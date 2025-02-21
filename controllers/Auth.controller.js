@@ -6,16 +6,16 @@ const jwt = require('jsonwebtoken');
 // Registration
 const register = async (req, res) => {
   try {
-    // Extract user information form request body
+    // Extract user information from request body
     const { nik, password, role, ...dataEmployee } = req.body;
 
-    // Check if user is alredy exist in our database
+    // Check if user is already exist in our database
     const checkExistingUser = await User.findOne({ $or: [{ nik }] });
 
     if (checkExistingUser) {
       return res.status(400).json({
         success: false,
-        message: 'User is alredy exist',
+        message: 'User is already exist',
       });
     }
 
