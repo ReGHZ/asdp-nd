@@ -5,6 +5,7 @@ const {
   divisionRoutes,
   positionRoutes,
   authRoutes,
+  employeeRoutes,
 } = require('./config/routes.conf');
 
 // Conf app and port
@@ -21,6 +22,7 @@ app.use(express.json());
 app.use('/api/division', divisionRoutes);
 app.use('/api/position', positionRoutes);
 app.use('/api/auth', authRoutes);
+app.use('/api/employee', employeeRoutes);
 
 // Listener
 app.listen(PORT, () => {
