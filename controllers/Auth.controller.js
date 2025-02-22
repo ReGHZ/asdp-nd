@@ -9,13 +9,24 @@ const register = async (req, res) => {
     // Extract user information from request body
     const { nik, password, role, ...dataEmployee } = req.body;
 
-    // Check if user is already exist in our database
+    // Check if user nik is already exist in our database
     const checkExistingUser = await User.findOne({ $or: [{ nik }] });
 
     if (checkExistingUser) {
       return res.status(400).json({
         success: false,
         message: 'User is already exist',
+      });
+    }
+
+    // Validate password
+    const passwordRegex =
+      /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
+    if (!passwordRegex.test(password)) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'Password must be at least 8 characters long, contain at least one lowercase letter, one uppercase letter, one number, and one special character',
       });
     }
 
@@ -132,6 +143,17 @@ const changePassword = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: 'Old password is incorrect',
+      });
+    }
+
+    // Validate password
+    const passwordRegex =
+      /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
+    if (!passwordRegex.test(newPassword)) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'Password must be at least 8 characters long, contain at least one lowercase letter, one uppercase letter, one number, and one special character',
       });
     }
 
