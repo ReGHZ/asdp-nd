@@ -178,4 +178,31 @@ const changePassword = async (req, res) => {
   }
 };
 
-module.exports = { register, login, changePassword };
+// Delete User :: don't use
+const deleteUser = async (req, res) => {
+  try {
+    const userId = req.params.id;
+    const deletedUser = await User.findOneAndDelete({ _id: userId });
+
+    if (!deleteUser) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found',
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'User deleted successfulyy',
+      data: deletedUser,
+    });
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({
+      success: false,
+      message: 'Something went wrong!',
+    });
+  }
+};
+
+module.exports = { register, login, changePassword, deleteUser };

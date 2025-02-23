@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const Employee = require('./Employee');
 
 const UserSchema = new mongoose.Schema(
   {
@@ -26,5 +27,14 @@ const UserSchema = new mongoose.Schema(
     timestamps: true,
   }
 );
+
+// Middleware for delete Employee if User deleted
+UserSchema.pre('findOneAndDelete', async function (next) {
+  const user = await this.model.findOne(this.getQuery());
+  if (user && user.employee) {
+    await Employee.deleteOne({ _id: user.employee });
+  }
+  next();
+});
 
 module.exports = mongoose.model('User', UserSchema);
