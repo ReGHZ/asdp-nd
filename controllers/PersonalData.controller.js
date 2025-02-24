@@ -1,7 +1,7 @@
 const PersonalData = require('../models/PersonalData');
 const Employee = require('../models/Employee');
-// Store personal data
 
+// Store personal data
 const addPersonalData = async (req, res) => {
   try {
     // Request body
@@ -13,7 +13,7 @@ const addPersonalData = async (req, res) => {
     if (!employee) {
       return res.status(404).json({
         success: false,
-        message: 'Employee not found',
+        message: 'Personal data not found',
       });
     }
 
@@ -38,4 +38,42 @@ const addPersonalData = async (req, res) => {
   }
 };
 
-module.exports = { addPersonalData };
+// Update personal data
+const updatePersonalDataById = async (req, res) => {
+  try {
+    // Fund user by id
+    const personalDataId = req.params.id;
+
+    // Retrieves all data from req.body
+    const updateData = req.body;
+
+    // update data personalData
+    const updatedPersonalData = await PersonalData.findByIdAndUpdate(
+      personalDataId,
+      updateData,
+      {
+        new: true,
+        runValidators: true,
+      }
+    );
+
+    if (!updatedPersonalData) {
+      return res.status(404).json({
+        success: false,
+        message: 'Personal data not found',
+      });
+    }
+
+    return res.status(200).json({
+      message: 'Personal data updated successfully',
+      data: updatedPersonalData,
+    });
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({
+      success: false,
+      message: 'Something went wrong!',
+    });
+  }
+};
+module.exports = { addPersonalData, updatePersonalDataById };
