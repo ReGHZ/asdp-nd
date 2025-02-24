@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const Employee = require('./Employee');
+const PersonalData = require('./PersonalData');
 
 const UserSchema = new mongoose.Schema(
   {
@@ -28,11 +29,14 @@ const UserSchema = new mongoose.Schema(
   }
 );
 
-// Middleware for delete Employee if User deleted
+// Middleware for delete Employee and PersonalData if User deleted
 UserSchema.pre('findOneAndDelete', async function (next) {
   const user = await this.model.findOne(this.getQuery());
   if (user && user.employee) {
-    await Employee.deleteOne({ _id: user.employee });
+    // Delete personalData
+    await PersonalData.deleteMany({ employee: user.employee });
+    // Delete employee
+    await Employee.findByIdAndDelete(user.employee);
   }
   next();
 });
