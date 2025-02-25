@@ -14,6 +14,11 @@ const PersonalDataSchema = new mongoose.Schema(
     bankNumber: { type: String },
     shoeSize: { type: Number },
     clothesSize: { type: String },
+    // Save reference to media for profile picture
+    profilePicture: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Media',
+    },
   },
   {
     timestamps: true,

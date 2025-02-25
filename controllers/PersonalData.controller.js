@@ -1,5 +1,7 @@
 const PersonalData = require('../models/PersonalData');
 const Employee = require('../models/Employee');
+const Media = require('../models/Media');
+const { uploadProfilePicture } = require('../helpers/Cloudinary.helper');
 
 // Store personal data
 const addPersonalData = async (req, res) => {
@@ -76,4 +78,21 @@ const updatePersonalDataById = async (req, res) => {
     });
   }
 };
-module.exports = { addPersonalData, updatePersonalDataById };
+
+// Upload profile picture
+const updateProfilePicture = async (req, res) => {
+  try {
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({
+      success: false,
+      message: 'Something went wrong!',
+    });
+  }
+};
+
+module.exports = {
+  addPersonalData,
+  updatePersonalDataById,
+  updateProfilePicture,
+};
