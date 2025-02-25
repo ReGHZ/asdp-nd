@@ -1,11 +1,14 @@
 const express = require('express');
 const authMiddleware = require('../middleware/Auth.middleware');
-const uploadMiddleware = require('../middleware/Upload.middleware');
 const {
   addPersonalData,
   updatePersonalDataById,
   updateProfilePicture,
 } = require('../controllers/PersonalData.controller');
+const {
+  uploadMiddleware,
+  handleUploadError,
+} = require('../middleware/Upload.middleware');
 
 const router = express.Router();
 
@@ -15,7 +18,8 @@ router.put('/update/:id', authMiddleware, updatePersonalDataById);
 router.post(
   '/upload',
   authMiddleware,
-  uploadMiddleware.single('image'),
+  uploadMiddleware,
+  handleUploadError,
   updateProfilePicture
 );
 
