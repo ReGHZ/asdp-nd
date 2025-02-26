@@ -69,17 +69,43 @@ const updateEmployeeDataById = async (req, res) => {
 // Get all employees
 const getAllEmployees = async (req, res) => {
   try {
-    const { page = 1, limit = 10 } = req.query;
-    const employees = await PersonalData.find()
-      .populate('employee')
-      .populate('profilePicture')
+    const { page = 1, limit = 10, name, division, position } = req.query;
+
+    // Build filter for Employee
+    const employeeFilter = {};
+    if (name) {
+      employeeFilter.name = { $regex: name, $options: 'i' };
+    }
+    if (division) {
+      employeeFilter.division = division;
+    }
+    if (position) {
+      employeeFilter.position = position;
+    }
+
+    // Find Employees that match the filter
+    const employees = await Employee.find(employeeFilter)
       .skip((page - 1) * limit)
       .limit(parseInt(limit))
       .exec();
+
+    // Get PersonalData linked to these employees
+    const employeeIds = employees.map((emp) => emp._id);
+    const personalDataWithEmployees = await PersonalData.find({
+      employee: { $in: employeeIds },
+    })
+      .populate('employee')
+      .populate('profilePicture')
+      .exec();
+
+    const totalDocuments = await PersonalData.countDocuments();
     return res.status(200).json({
       success: true,
       message: 'Employee retrieves successfully',
-      data: employees,
+      data: personalDataWithEmployees,
+      totalDocuments,
+      currentPage: parseInt(page),
+      totalPages: Math.ceil(totalDocuments / limit),
     });
   } catch (e) {
     console.error(e);
@@ -90,4 +116,43 @@ const getAllEmployees = async (req, res) => {
   }
 };
 
-module.exports = { getAllEmployees, updateEmployeeDataById };
+// Get employee detail by id
+const getDetailEmployeeById = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Find employee data
+    const employee = await Employee.findById(id).exec();
+    if (!employee) {
+      return res
+        .status(404)
+        .json({ success: false, message: 'Employee not found' });
+    }
+
+    // Find personal data associated with employee
+    const personalData = await PersonalData.findOne({ employee: id })
+      .populate('profilePicture')
+      .exec();
+
+    return res.status(200).json({
+      success: true,
+      message: 'Employee retrieves successfully',
+      data: {
+        employee,
+        personalData: personalData || null, // if no personal data, return null
+      },
+    });
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({
+      success: false,
+      message: 'Something went wrong!',
+    });
+  }
+};
+
+module.exports = {
+  getAllEmployees,
+  getDetailEmployeeById,
+  updateEmployeeDataById,
+};

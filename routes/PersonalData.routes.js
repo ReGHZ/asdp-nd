@@ -4,6 +4,7 @@ const {
   updateProfilePicture,
   addPersonalDataByUser,
   updatePersonalDataByUser,
+  getPersonalDataByUser,
 } = require('../controllers/PersonalData.controller');
 const {
   uploadMiddleware,
@@ -15,6 +16,7 @@ const router = express.Router();
 // All the routes related to PersonalData will be here
 router.post('/add', authMiddleware, addPersonalDataByUser);
 router.put('/update', authMiddleware, updatePersonalDataByUser);
+router.get('/get', authMiddleware, getPersonalDataByUser);
 router.post(
   '/upload',
   authMiddleware,

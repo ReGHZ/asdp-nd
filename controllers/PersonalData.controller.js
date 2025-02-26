@@ -95,6 +95,45 @@ const updatePersonalDataByUser = async (req, res) => {
   }
 };
 
+// Get personal data by user
+const getPersonalDataByUser = async (req, res) => {
+  try {
+    // Request user id from token
+    const userId = req.user.userId;
+
+    // Find user and populate employee
+    const user = await User.findById(userId).populate('employee').exec();
+    if (!user || !user.employee) {
+      return res.status(404).json({
+        success: false,
+        message: 'Employee not found',
+      });
+    }
+
+    // Find personal data associated with employee
+    const personalData = await PersonalData.findOne({
+      employee: user.employee._id,
+    })
+      .populate('profilePicture')
+      .exec();
+
+    return res.status(200).json({
+      success: true,
+      message: 'Employee retrieves successfully',
+      data: {
+        employee: user.employee,
+        personalData: personalData || null, // if no personal data, return null,
+      },
+    });
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({
+      success: false,
+      message: 'Something went wrong!',
+    });
+  }
+};
+
 // Upload profile picture
 const updateProfilePicture = async (req, res) => {
   let uploadedFilePublicId = null;
@@ -193,6 +232,7 @@ const updateProfilePicture = async (req, res) => {
 };
 
 module.exports = {
+  getPersonalDataByUser,
   addPersonalDataByUser,
   updatePersonalDataByUser,
   updateProfilePicture,
