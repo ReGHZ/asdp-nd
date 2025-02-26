@@ -1,9 +1,9 @@
 const express = require('express');
 const authMiddleware = require('../middleware/Auth.middleware');
 const {
-  addPersonalData,
-  updatePersonalDataById,
   updateProfilePicture,
+  addPersonalDataByUser,
+  updatePersonalDataByUser,
 } = require('../controllers/PersonalData.controller');
 const {
   uploadMiddleware,
@@ -13,8 +13,8 @@ const {
 const router = express.Router();
 
 // All the routes related to PersonalData will be here
-router.post('/add', authMiddleware, addPersonalData);
-router.put('/update/:id', authMiddleware, updatePersonalDataById);
+router.post('/add', authMiddleware, addPersonalDataByUser);
+router.put('/update', authMiddleware, updatePersonalDataByUser);
 router.post(
   '/upload',
   authMiddleware,

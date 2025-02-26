@@ -1,37 +1,37 @@
 const User = require('../models/User');
-const Employee = require('../models/Employee');
 const PersonalData = require('../models/PersonalData');
 const Media = require('../models/Media');
 const { uploadProfilePicture } = require('../helpers/Cloudinary.helper');
 const cloudinary = require('../config/cloudinary.conf');
 
-// Store personal data
-const addPersonalData = async (req, res) => {
+// Store personal data by user
+const addPersonalDataByUser = async (req, res) => {
   try {
-    // Request body
-    const { employeeId, ...personalData } = req.body;
+    // Request userId from token login
+    const userId = req.user.userId;
 
-    // Validate if employee exist on database
-    const employee = await Employee.findById(employeeId);
+    // Find userId and populate employee
+    const user = await User.findById(userId).populate('employee');
 
-    if (!employee) {
+    // Validate if user and employee exist on database
+    if (!user || !user.employee) {
       return res.status(404).json({
         success: false,
-        message: 'Personal data not found',
+        message: 'Employee not found',
       });
     }
 
     // Store personal data file
-    const newPersonalData = new PersonalData({
-      employee: employeeId,
-      ...personalData,
+    const personalData = new PersonalData({
+      ...req.body,
+      employee: user.employee._id,
     });
 
-    await newPersonalData.save();
+    await personalData.save();
 
     return res.status(200).json({
       message: 'Personal data created successfully',
-      data: newPersonalData,
+      data: personalData,
     });
   } catch (e) {
     console.error(e);
@@ -42,31 +42,45 @@ const addPersonalData = async (req, res) => {
   }
 };
 
-// Update personal data
-const updatePersonalDataById = async (req, res) => {
+// Update personal data by user
+const updatePersonalDataByUser = async (req, res) => {
   try {
-    // Fund user by id
-    const personalDataId = req.params.id;
+    // Request userId from token login
+    const userId = req.user.userId;
 
-    // Retrieves all data from req.body
-    const updateData = req.body;
+    // Find user and populate employee
+    const user = await User.findById(userId).populate('employee');
 
-    // update data personalData
-    const updatedPersonalData = await PersonalData.findByIdAndUpdate(
-      personalDataId,
-      updateData,
-      {
-        new: true,
-        runValidators: true,
-      }
-    );
+    // Validate if user, employee exist
+    if (!user || !user.employee) {
+      return res.status(404).json({
+        success: false,
+        message: 'Employee not found',
+      });
+    }
 
-    if (!updatedPersonalData) {
+    // Find employee id on personal data
+    const personalData = await PersonalData.findOne({
+      employee: user.employee._id,
+    });
+
+    // Validate if personal data exist
+    if (!personalData) {
       return res.status(404).json({
         success: false,
         message: 'Personal data not found',
       });
     }
+
+    // update data personalData
+    const updatedPersonalData = await PersonalData.findByIdAndUpdate(
+      personalData._id,
+      req.body,
+      {
+        new: true,
+        runValidators: true,
+      }
+    );
 
     return res.status(200).json({
       message: 'Personal data updated successfully',
@@ -157,13 +171,13 @@ const updateProfilePicture = async (req, res) => {
     personalData.profilePicture = newMedia._id;
     await personalData.save();
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       message: 'Profile picture updated successfully',
       data: newMedia,
     });
-  } catch (error) {
-    console.error(error);
+  } catch (e) {
+    console.error(e);
 
     // Delete uploaded files if an error occurs
     if (uploadedFilePublicId) {
@@ -171,15 +185,15 @@ const updateProfilePicture = async (req, res) => {
     }
 
     // General error handling
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
-      message: 'Internal server error',
+      message: 'Something went wrong!',
     });
   }
 };
 
 module.exports = {
-  addPersonalData,
-  updatePersonalDataById,
+  addPersonalDataByUser,
+  updatePersonalDataByUser,
   updateProfilePicture,
 };

@@ -1,6 +1,7 @@
 const express = require('express');
 const {
   updateEmployeeDataById,
+  getAllEmployees,
 } = require('../controllers/Employee.controller');
 const authMiddleware = require('../middleware/Auth.middleware');
 const isAdminUserMiddleware = require('../middleware/Admin.middleware');
@@ -14,5 +15,6 @@ router.put(
   isAdminUserMiddleware,
   updateEmployeeDataById
 );
+router.get('/get', authMiddleware, isAdminUserMiddleware, getAllEmployees);
 
 module.exports = router;
