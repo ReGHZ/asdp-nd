@@ -44,7 +44,7 @@ const EmployeeSchema = new mongoose.Schema(
     rank: { type: String, required: true },
     class: { type: String, required: true },
     segment: { type: String, required: true },
-    leaveQuota: { type: Number, default: 12 },
+    annualLeaveQuota: { type: Number, default: 12 },
   },
   {
     timestamps: true,

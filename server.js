@@ -7,6 +7,7 @@ const {
   authRoutes,
   employeeRoutes,
   personalDataRoutes,
+  LeaveApplicationRoutes,
 } = require('./config/routes.conf');
 
 // Conf app and port
@@ -25,6 +26,7 @@ app.use('/api/position', positionRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/employee', employeeRoutes);
 app.use('/api/personalData', personalDataRoutes);
+app.use('/api/leaveApplication', LeaveApplicationRoutes);
 
 // Listener
 app.listen(PORT, () => {

@@ -5,7 +5,7 @@ const { uploadProfilePicture } = require('../helpers/Cloudinary.helper');
 const cloudinary = require('../config/cloudinary.conf');
 
 // Store personal data by user
-const addPersonalDataByUser = async (req, res) => {
+const createPersonalDataByUser = async (req, res) => {
   try {
     // Request userId from token login
     const userId = req.user.userId;
@@ -31,7 +31,10 @@ const addPersonalDataByUser = async (req, res) => {
 
     return res.status(200).json({
       message: 'Personal data created successfully',
-      data: personalData,
+      data: {
+        employee: user.employee,
+        personalData: personalData || null,
+      },
     });
   } catch (e) {
     console.error(e);
@@ -233,7 +236,7 @@ const updateProfilePicture = async (req, res) => {
 
 module.exports = {
   getPersonalDataByUser,
-  addPersonalDataByUser,
+  createPersonalDataByUser,
   updatePersonalDataByUser,
   updateProfilePicture,
 };

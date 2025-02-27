@@ -4,6 +4,7 @@ const positionRoutes = require('../routes/Position.routes');
 const authRoutes = require('../routes/Auth.routes');
 const employeeRoutes = require('../routes/Employee.routes');
 const personalDataRoutes = require('../routes/PersonalData.routes');
+const LeaveApplicationRoutes = require('../routes/LeaveApplication.routes');
 
 // export all routes
 module.exports = {
@@ -12,4 +13,5 @@ module.exports = {
   authRoutes,
   employeeRoutes,
   personalDataRoutes,
+  LeaveApplicationRoutes,
 };

@@ -8,7 +8,7 @@ const updateEmployeeDataById = async (req, res) => {
     const employeeId = req.params.id;
 
     // Retrieves all data from req.body, but separates leaveQuota
-    const { leaveQuota, personalData, ...employeeData } = req.body;
+    const { annualLeaveQuota, personalData, ...employeeData } = req.body;
 
     // Update data employee
     const updatedEmployee = await Employee.findByIdAndUpdate(
