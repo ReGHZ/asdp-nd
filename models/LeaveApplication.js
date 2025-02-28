@@ -31,15 +31,21 @@ const leaveApplicationSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ['pending', 'approved', 'rejected'],
+      enum: ['pending', 'reviewed', 'approved', 'rejected'],
       default: 'pending',
     },
     reviewedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, // Manager yang mereview
     reviewedAt: { type: Date },
     approvalData: {
-      //  Admin completes approval data
       approvalNumber: String,
       notes: String,
+      approvedByAdmin: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      approvedAt: Date,
+    },
+    rejectionData: {
+      rejectedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      rejectedAt: Date,
+      rejectionReason: String,
     },
     physicianLetter: {
       type: mongoose.Schema.Types.ObjectId,
