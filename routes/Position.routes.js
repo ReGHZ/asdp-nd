@@ -7,25 +7,25 @@ const {
   deletePositionById,
 } = require('../controllers/Position.controller');
 const authMiddleware = require('../middleware/Auth.middleware');
-const isAdminUserMiddleware = require('../middleware/Admin.middleware');
+const roleMiddleware = require('../middleware/Role.middleware');
 
 // create express router
 const router = express.Router();
 
 // All the routes related to divisi will be here
-router.post('/add', authMiddleware, isAdminUserMiddleware, createPosition);
+router.post('/add', authMiddleware, roleMiddleware(['admin']), createPosition);
 router.get('/get', authMiddleware, getPositions);
 router.get('/get/:id', authMiddleware, getSinglePositionById);
 router.put(
   '/update/:id',
   authMiddleware,
-  isAdminUserMiddleware,
+  roleMiddleware(['admin']),
   updatePositionById
 );
 router.delete(
   '/delete/:id',
   authMiddleware,
-  isAdminUserMiddleware,
+  roleMiddleware(['admin']),
   deletePositionById
 );
 

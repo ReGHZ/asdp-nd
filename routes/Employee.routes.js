@@ -5,7 +5,7 @@ const {
   getDetailEmployeeById,
 } = require('../controllers/Employee.controller');
 const authMiddleware = require('../middleware/Auth.middleware');
-const isAdminUserMiddleware = require('../middleware/Admin.middleware');
+const roleMiddleware = require('../middleware/Role.middleware');
 
 const router = express.Router();
 
@@ -13,14 +13,14 @@ const router = express.Router();
 router.put(
   '/update/:id',
   authMiddleware,
-  isAdminUserMiddleware,
+  roleMiddleware(['admin']),
   updateEmployeeDataById
 );
-router.get('/get', authMiddleware, isAdminUserMiddleware, getAllEmployees);
+router.get('/get', authMiddleware, roleMiddleware(['admin']), getAllEmployees);
 router.get(
   '/get/:id',
   authMiddleware,
-  isAdminUserMiddleware,
+  roleMiddleware(['admin']),
   getDetailEmployeeById
 );
 

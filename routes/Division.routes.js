@@ -8,25 +8,25 @@ const {
   getDivisions,
 } = require('../controllers/Division.controller');
 const authMiddleware = require('../middleware/Auth.middleware');
-const isAdminUserMiddleware = require('../middleware/Admin.middleware');
+const roleMiddleware = require('../middleware/Role.middleware');
 
 // Create express router
 const router = express.Router();
 
 // All the routes related to divisi will be here
-router.post('/add', authMiddleware, isAdminUserMiddleware, createDivision);
+router.post('/add', authMiddleware, roleMiddleware(['admin']), createDivision);
 router.get('/get', authMiddleware, getDivisions);
 router.get('/get/:id', authMiddleware, getSingleDivisionById);
 router.put(
   '/update/:id',
   authMiddleware,
-  isAdminUserMiddleware,
+  roleMiddleware(['admin']),
   updateDivisionById
 );
 router.delete(
   '/delete/:id',
   authMiddleware,
-  isAdminUserMiddleware,
+  roleMiddleware(['admin']),
   deleteDivisionById
 );
 
