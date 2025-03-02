@@ -34,8 +34,11 @@ const leaveApplicationSchema = new mongoose.Schema(
       enum: ['pending', 'reviewed', 'approved', 'rejected'],
       default: 'pending',
     },
-    reviewedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, // Manager yang mereview
-    reviewedAt: { type: Date },
+    reviewedData: {
+      reviewedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, // Only manager's can review
+      reviewedAt: { type: Date },
+      notes: String,
+    },
     approvalData: {
       approvalNumber: String,
       notes: String,
