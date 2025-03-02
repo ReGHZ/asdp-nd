@@ -3,6 +3,11 @@ const { uploadPhysicianLetter } = require('../helpers/Cloudinary.helper');
 const LeaveApplication = require('../models/LeaveApplication');
 const Media = require('../models/Media');
 const User = require('../models/User');
+const {
+  notifyManager,
+  notifyAdmin,
+  notifyUser,
+} = require('../helpers/Mail.helper');
 
 // Generate letter number (format: 1/01, 1/02, .... and reset each year)
 const generateLetterNumber = async () => {
@@ -32,10 +37,13 @@ const createLeaveApplicationByUser = async (req, res) => {
     const userId = req.user.userId;
 
     // Find user id and populate employee
-    const user = await User.findById(userId).populate('employee');
+    const user = await User.findById(userId).populate({
+      path: 'employee',
+      populate: { path: 'division' },
+    });
 
     // Validation if user and employee exist on database
-    if (!user || !user.employee) {
+    if (!user || !user.employee || !user.employee.division) {
       return res.status(404).json({
         success: false,
         message: 'Employee not found',
@@ -144,7 +152,15 @@ const createLeaveApplicationByUser = async (req, res) => {
 
     await newLeaveApplication.save();
 
-    return res.status(201).json({
+    // Notify manager
+    const divisionId = user.employee.division._id;
+    await notifyManager(
+      divisionId,
+      'New Leave Application Submitted',
+      `<p>A new leave application has ben submitted by ${user.employee.name}. Please review it </p>`
+    );
+
+    return res.status(200).json({
       success: true,
       message: 'Leave application created successfully',
       data: newLeaveApplication,
@@ -158,4 +174,124 @@ const createLeaveApplicationByUser = async (req, res) => {
   }
 };
 
-module.exports = { createLeaveApplicationByUser };
+// Manager's reviewed leave application
+const reviewLeaveApplication = async (req, res) => {
+  try {
+    // Find leaveApp id
+    const leaveApplicationId = req.params.id;
+    const leaveApplication = await LeaveApplication.findById(
+      leaveApplicationId
+    ).populate('employee');
+
+    // Check if leave application exist
+    if (!leaveApplication) {
+      return res.status(404).json({
+        success: false,
+        message: 'Leave application not found',
+      });
+    }
+
+    // request body
+    const { status, reason } = req.body; // 'approved' or 'rejected'
+
+    // update status
+    leaveApplication.status = status;
+    leaveApplication.reviewedBy = req.user.userId;
+    leaveApplication.reviewedAt = new Date();
+
+    if (status === 'reviewed') {
+      await notifyAdmin(
+        'Leave Application Needs Approval',
+        `<p>Leave application by ${leaveApplication.employee.name} has been reviewed by the Manager. Please approve for final approval</p>`
+      );
+    } else if (status === 'rejected') {
+      leaveApplication.rejectionData = {
+        rejectedBy: req.user.userId,
+        rejectedAt: new Date(),
+        rejectionReason: reason,
+      };
+      await notifyUser(
+        leaveApplication.employee.email,
+        'Leave Application Rejected',
+        `<p> Your leave application has been. rejected. Reason ${reason}</p>`
+      );
+    }
+    await leaveApplication.save();
+
+    return res.status(200).json({
+      success: true,
+      data: leaveApplication,
+    });
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({
+      success: false,
+      message: 'Something went wrong!',
+    });
+  }
+};
+
+// Admin's proceed approval
+const approvalLeaveApplication = async (req, res) => {
+  try {
+    // Find id leave application
+    const applicationId = req.params.id;
+    const leaveApplication = await LeaveApplication.findById(
+      applicationId
+    ).populate('employee');
+
+    // Check if leave application exist
+    if (!leaveApplication) {
+      return res.status(404).json({
+        success: false,
+        message: 'Leave application not found',
+      });
+    }
+
+    // Request body
+    const { approvalNumber, notes } = req.body;
+
+    // Ensure only pending or reviewed applications can be approved
+    if (!['pending', 'reviewed'].includes(leaveApplication.status)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Only pending or reviewed applications can be approved.',
+      });
+    }
+
+    // Approve leave application
+    leaveApplication.status = 'approved';
+    leaveApplication.approvalData = {
+      approvalNumber,
+      approvedByAdmin: req.user.userId,
+      approvedAt: new Date(),
+      notes,
+    };
+
+    await leaveApplication.save();
+
+    // Prepare email content
+    const subject = 'Leave Application Approved';
+    const message = `<p>Your leave application has been approved. Approval Number: ${approvalNumber}.</p>`;
+
+    // Send email to employee
+    await notifyUser(leaveApplication.employee.email, subject, message);
+
+    return res.status(200).json({
+      success: true,
+      data: leaveApplication,
+    });
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({
+      success: false,
+      message: 'Something went wrong!',
+    });
+  }
+};
+
+module.exports = {
+  createLeaveApplicationByUser,
+  reviewLeaveApplication,
+  approvalLeaveApplication,
+};
