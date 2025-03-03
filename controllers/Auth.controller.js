@@ -1,28 +1,47 @@
+const mongoose = require('mongoose');
 const Employee = require('../models/Employee');
 const User = require('../models/User');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
-// Registration
+/**
+ * Register a new user along with the associated employee data.
+ * Uses a transaction to ensure both Employee and User are created atomically.
+ *
+ * @param {Object} req - Express request object.
+ *   req.body should include:
+ *     - nik: Unique identifier for the user.
+ *     - password: User's password.
+ *     - role: User role (e.g., "admin" or "user").
+ *     - ...dataEmployee: Other employee-related fields.
+ * @param {Object} res - Express response object.
+ * @returns {Object} JSON response indicating success or failure.
+ */
 const register = async (req, res) => {
+  // Start a new session for the transaction
+  const session = await mongoose.startSession();
+  session.startTransaction();
   try {
     // Extract user information from request body
     const { nik, password, role, ...dataEmployee } = req.body;
 
-    // Check if user nik is already exist in our database
-    const checkExistingUser = await User.findOne({ $or: [{ nik }] });
-
+    // Check if a user with the provided NIK already exists
+    const checkExistingUser = await User.findOne({ nik }).session(session);
     if (checkExistingUser) {
+      await session.abortTransaction();
+      session.endSession();
       return res.status(400).json({
         success: false,
-        message: 'User is already exist',
+        message: 'User already exists',
       });
     }
 
-    // Validate password
+    // Validate password using regex
     const passwordRegex =
       /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
     if (!passwordRegex.test(password)) {
+      await session.abortTransaction();
+      session.endSession();
       return res.status(400).json({
         success: false,
         message:
@@ -30,38 +49,36 @@ const register = async (req, res) => {
       });
     }
 
-    // Hash password
+    // Hash the password
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    // Create Employee
+    // Create a new Employee record
     const employee = new Employee(dataEmployee);
-    await employee.save();
+    await employee.save({ session });
 
-    // Create User
+    // Create a new User record linked to the Employee
     const user = new User({
       nik,
       password: hashedPassword,
       role,
       employee: employee._id,
     });
+    await user.save({ session });
 
-    await user.save();
+    // Commit transaction if both operations succeed
+    await session.commitTransaction();
+    session.endSession();
 
-    if (user) {
-      return res.status(200).json({
-        success: true,
-        message: 'User registered successfully',
-        data: user,
-      });
-    } else {
-      return res.status(400).json({
-        success: false,
-        message: 'unable to register user! Please try again',
-      });
-    }
+    return res.status(200).json({
+      success: true,
+      message: 'User registered successfully',
+      data: user,
+    });
   } catch (e) {
-    console.error(e);
+    await session.abortTransaction();
+    session.endSession();
+    console.error('Error during user registration:', e);
     return res.status(500).json({
       success: false,
       message: 'Something went wrong!',
@@ -69,50 +86,57 @@ const register = async (req, res) => {
   }
 };
 
-// Login
+/**
+ * Authenticate user credentials and generate a JWT token.
+ *
+ * @param {Object} req - Express request object.
+ *   req.body should include:
+ *     - nik: The user's unique identifier.
+ *     - password: The user's password.
+ * @param {Object} res - Express response object.
+ * @returns {Object} JSON response containing the JWT token if authentication is successful.
+ */
 const login = async (req, res) => {
   try {
-    // Extract user information from our request body
+    // Extract credentials from request body
     const { nik, password } = req.body;
 
-    // Find user from nik
+    // Find user by NIK and populate the associated employee details
     const user = await User.findOne({ nik }).populate('employee');
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: 'User doesnt exist!',
+        message: "User doesn't exist!",
       });
     }
 
-    // Check if password correct or not
+    // Compare provided password with stored hashed password
     const isPasswordValid = await bcrypt.compare(password, user.password);
-
     if (!isPasswordValid) {
-      return res.status(404).json({
+      // 401 Unauthorized is more appropriate for invalid credentials
+      return res.status(401).json({
         success: false,
-        message: 'invalid credentials!',
+        message: 'Invalid credentials!',
       });
     }
 
-    // Create user token
+    // Generate JWT token with user information
     const token = jwt.sign(
       {
         userId: user._id,
         role: user.role,
       },
       process.env.JWT_SECRET_KEY,
-      {
-        expiresIn: '7d',
-      }
+      { expiresIn: '7d' }
     );
 
     return res.status(200).json({
       success: true,
-      message: 'logged in successfully',
+      message: 'Logged in successfully',
       token,
     });
   } catch (e) {
-    console.error(e);
+    console.error('Error during user login:', e);
     return res.status(500).json({
       success: false,
       message: 'Something went wrong!',
@@ -120,15 +144,25 @@ const login = async (req, res) => {
   }
 };
 
-// Change password
+/**
+ * Change the user's password after verifying the old password.
+ *
+ * @param {Object} req - Express request object.
+ *   req.body should include:
+ *     - oldPassword: The user's current password.
+ *     - newPassword: The user's new password.
+ *   req.user should include:
+ *     - userId: The authenticated user's ID (extracted from the JWT token).
+ * @param {Object} res - Express response object.
+ * @returns {Object} JSON response indicating whether the password change was successful.
+ */
 const changePassword = async (req, res) => {
   try {
-    // Extract user information from our request body
+    // Extract old and new passwords from request body
     const { oldPassword, newPassword } = req.body;
+    const userId = req.user.userId; // Extracted from verified JWT token
 
-    const userId = req.user.userId; // Extracted from verified JWT tokens
-
-    // Find user by Id
+    // Find the user by ID
     const user = await User.findById(userId);
     if (!user) {
       return res.status(404).json({
@@ -137,7 +171,7 @@ const changePassword = async (req, res) => {
       });
     }
 
-    // Check if old password is match
+    // Verify that the old password matches the stored password
     const isPasswordValid = await bcrypt.compare(oldPassword, user.password);
     if (!isPasswordValid) {
       return res.status(400).json({
@@ -146,7 +180,15 @@ const changePassword = async (req, res) => {
       });
     }
 
-    // Validate password
+    // Prevent setting the new password equal to the old password
+    if (oldPassword === newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: 'New password cannot be the same as the old password',
+      });
+    }
+
+    // Validate new password using regex
     const passwordRegex =
       /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
     if (!passwordRegex.test(newPassword)) {
@@ -157,11 +199,11 @@ const changePassword = async (req, res) => {
       });
     }
 
-    // Hash new password
+    // Hash the new password
     const salt = await bcrypt.genSalt(10);
     const hashedNewPassword = await bcrypt.hash(newPassword, salt);
 
-    // Update new password
+    // Update the user's password and save
     user.password = hashedNewPassword;
     await user.save();
 
@@ -170,7 +212,7 @@ const changePassword = async (req, res) => {
       message: 'Password changed successfully',
     });
   } catch (e) {
-    console.error(e);
+    console.error('Error during password change:', e);
     return res.status(500).json({
       success: false,
       message: 'Something went wrong!',
@@ -178,12 +220,20 @@ const changePassword = async (req, res) => {
   }
 };
 
-// Delete User :: don't use
+/**
+ * Delete a user along with the associated employee and personal data.
+ *
+ * @param {Object} req - Express request object.
+ *   req.params should include:
+ *     - id: The ID of the user to delete.
+ * @param {Object} res - Express response object.
+ * @returns {Object} JSON response indicating whether the deletion was successful.
+ */
 const deleteUser = async (req, res) => {
   try {
+    // Extract user ID from request parameters
     const userId = req.params.id;
     const deletedUser = await User.findOneAndDelete({ _id: userId });
-
     if (!deletedUser) {
       return res.status(404).json({
         success: false,
@@ -193,11 +243,11 @@ const deleteUser = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: 'User deleted successfulyy',
+      message: 'User deleted successfully',
       data: deletedUser,
     });
   } catch (e) {
-    console.error(e);
+    console.error('Error during user deletion:', e);
     return res.status(500).json({
       success: false,
       message: 'Something went wrong!',

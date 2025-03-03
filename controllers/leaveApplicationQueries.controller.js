@@ -2,7 +2,7 @@ const LeaveApplication = require('../models/LeaveApplication');
 const User = require('../models/User');
 
 /**
- * List of allowed fields for sorting
+ * List of allowed fields for sorting.
  * @type {string[]}
  */
 const ALLOWED_SORT_FIELDS = [
@@ -15,7 +15,7 @@ const ALLOWED_SORT_FIELDS = [
 ];
 
 /**
- * List of valid leave types
+ * List of valid leave types.
  * @type {string[]}
  */
 const VALID_LEAVE_TYPES = [
@@ -26,16 +26,18 @@ const VALID_LEAVE_TYPES = [
 ];
 
 /**
- * Escapes special characters in a string for safe use in regex
- * @param {string} str - Input string
- * @returns {string} Escaped string
+ * Escapes special characters in a string for safe use in a regex.
+ *
+ * @param {string} str - Input string.
+ * @returns {string} Escaped string.
  */
 const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /**
- * Validates and parses a date string
- * @param {string} dateStr - Date string to validate
- * @returns {Date|null} Valid Date object or null if invalid
+ * Validates and parses a date string.
+ *
+ * @param {string} dateStr - Date string to validate.
+ * @returns {Date|null} Valid Date object if the format is valid; otherwise, null.
  */
 const parseDate = (dateStr) => {
   const date = new Date(dateStr);
@@ -43,11 +45,12 @@ const parseDate = (dateStr) => {
 };
 
 /**
- * Builds the base aggregation pipeline with filters
- * @param {Object} req - Express request object
- * @param {Object} initialMatch - Predefined security filters
- * @returns {Array} MongoDB aggregation pipeline
- * @throws {Error} If date format is invalid or filters are invalid
+ * Builds the base aggregation pipeline with filters.
+ *
+ * @param {Object} req - Express request object.
+ * @param {Object} [initialMatch={}] - Predefined security filters.
+ * @returns {Array} MongoDB aggregation pipeline.
+ * @throws {Error} If date format is invalid or filters are invalid.
  */
 const buildPipeline = (req, initialMatch = {}) => {
   const { startDate, endDate, typesOfLeave, status, employeeName, division } =
@@ -165,10 +168,11 @@ const buildPipeline = (req, initialMatch = {}) => {
 };
 
 /**
- * Applies pagination and sorting to the pipeline
- * @param {Array} pipeline - Base aggregation pipeline
- * @param {Object} req - Express request object
- * @returns {Array} Modified pipeline with pagination stages
+ * Applies pagination and sorting to the aggregation pipeline.
+ *
+ * @param {Array} pipeline - Base aggregation pipeline.
+ * @param {Object} req - Express request object.
+ * @returns {Array} Modified pipeline with pagination and sorting stages.
  */
 const applyPaginationAndSorting = (pipeline, req) => {
   // Parse and validate pagination parameters
@@ -215,7 +219,15 @@ const applyPaginationAndSorting = (pipeline, req) => {
 
 /**
  * GET /leaveApplication/user
- * Returns leave applications for the authenticated user with pagination and filtering
+ * Returns leave applications for the authenticated user with pagination and filtering.
+ *
+ * @async
+ * @function getUserLeaveApplications
+ * @param {Object} req - Express request object.
+ *   req.user must contain:
+ *     - userId: The authenticated user's ID.
+ * @param {Object} res - Express response object.
+ * @returns {Promise<void>} JSON response containing leave applications.
  */
 const getUserLeaveApplications = async (req, res) => {
   try {
@@ -226,11 +238,11 @@ const getUserLeaveApplications = async (req, res) => {
         .json({ success: false, message: 'Employee not found' });
     }
 
-    // Build the pipeline with an employee filter
+    // Build the pipeline with an employee filter for the authenticated user
     const pipeline = buildPipeline(req, { employee: user.employee._id });
     const paginatedPipeline = applyPaginationAndSorting([...pipeline], req);
 
-    // Execute the aggregation
+    // Execute the aggregation pipeline
     const [result = { metadata: [], data: [] }] =
       await LeaveApplication.aggregate(paginatedPipeline);
     const total = result.metadata[0]?.total || 0;
@@ -250,7 +262,15 @@ const getUserLeaveApplications = async (req, res) => {
 
 /**
  * GET /leaveApplication/manager
- * Returns leave applications for the manager's division with pagination and filtering
+ * Returns leave applications for the manager's division with pagination and filtering.
+ *
+ * @async
+ * @function getManagerLeaveApplications
+ * @param {Object} req - Express request object.
+ *   req.user must contain:
+ *     - userId: The authenticated user's ID.
+ * @param {Object} res - Express response object.
+ * @returns {Promise<void>} JSON response containing leave applications.
  */
 const getManagerLeaveApplications = async (req, res) => {
   try {
@@ -265,7 +285,7 @@ const getManagerLeaveApplications = async (req, res) => {
         .json({ success: false, message: 'Division not found' });
     }
 
-    // Remove the division query parameter to avoid overriding the manager's division filter
+    // Remove division query parameter to avoid overriding manager's division filter
     const { division, ...otherQueryParams } = req.query;
     const modifiedReq = { ...req, query: otherQueryParams };
 
@@ -282,7 +302,7 @@ const getManagerLeaveApplications = async (req, res) => {
     // Apply pagination and sorting
     const paginatedPipeline = applyPaginationAndSorting([...pipeline], req);
 
-    // Execute the aggregation
+    // Execute the aggregation pipeline
     const [result = { metadata: [], data: [] }] =
       await LeaveApplication.aggregate(paginatedPipeline);
     const total = result.metadata[0]?.total || 0;
@@ -302,17 +322,21 @@ const getManagerLeaveApplications = async (req, res) => {
 
 /**
  * GET /leaveApplication/admin
- * Returns all leave applications with advanced filtering and pagination
+ * Returns all leave applications with advanced filtering, pagination, and sorting.
+ *
+ * @async
+ * @function getAdminLeaveApplications
+ * @param {Object} req - Express request object.
+ * @param {Object} res - Express response object.
+ * @returns {Promise<void>} JSON response containing leave applications.
  */
 const getAdminLeaveApplications = async (req, res) => {
   try {
     // Build the pipeline without any initial filters
     const pipeline = buildPipeline(req);
-
-    // Apply pagination and sorting
+    // Apply pagination and sorting to the pipeline
     const paginatedPipeline = applyPaginationAndSorting([...pipeline], req);
-
-    // Execute the aggregation
+    // Execute the aggregation pipeline
     const [result = { metadata: [], data: [] }] =
       await LeaveApplication.aggregate(paginatedPipeline);
     const total = result.metadata[0]?.total || 0;
@@ -331,9 +355,10 @@ const getAdminLeaveApplications = async (req, res) => {
 };
 
 /**
- * Centralized error handler for controllers
- * @param {Object} res - Express response object
- * @param {Error} error - Error object
+ * Centralized error handler for controllers.
+ *
+ * @param {Object} res - Express response object.
+ * @param {Error} error - Error object.
  */
 const handleControllerError = (res, error) => {
   console.error('Controller Error:', error);
@@ -346,11 +371,11 @@ const handleControllerError = (res, error) => {
     'Invalid status': 400,
   };
 
-  const statusCode = Object.keys(errorMap).find((e) =>
-    error.message.includes(e)
-  )
-    ? errorMap[e]
-    : 500;
+  // Determine the status code based on the error message
+  const statusKey = Object.keys(errorMap).find((key) =>
+    error.message.includes(key)
+  );
+  const statusCode = statusKey ? errorMap[statusKey] : 500;
 
   res.status(statusCode).json({
     success: false,

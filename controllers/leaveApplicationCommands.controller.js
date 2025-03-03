@@ -12,17 +12,22 @@ const {
 } = require('../helpers/Mail.helper');
 
 /**
- * Generate a unique letter number in the format: (number)/(month)
+ * Generate a unique letter number in the format: "NNN/YYYY".
  * The number resets every year.
- * @returns {Promise<string>} - The generated letter number (e.g., "1/01", "2/01", etc.)
+ *
+ * @async
+ * @function generateLetterNumber
+ * @returns {Promise<string>} - The generated letter number (e.g., "001/2023").
+ * @throws {Error} - Throws an error if the letter number cannot be generated.
  */
 const generateLetterNumber = async () => {
+  // Start a session for transaction to ensure atomicity
   const session = await mongoose.startSession();
   session.startTransaction();
   try {
     const currentYear = new Date().getFullYear();
 
-    // Find the last leave application for the current year within a transaction
+    // Find the last leave application for the current year using the transaction session
     const lastLeave = await LeaveApplication.findOne(
       {
         dateOfLetter: {
@@ -33,26 +38,28 @@ const generateLetterNumber = async () => {
       { letterNumber: 1, _id: 0 },
       { session } // Use the session for atomicity
     )
-      .sort({ letterNumber: -1 }) // Sort by letterNumber
+      .sort({ letterNumber: -1 }) // Sort by letterNumber in descending order
       .lean();
 
     let nextNumber = 1;
     if (lastLeave?.letterNumber) {
-      // Extract the number part (e.g., "001/2023" -> 1)
+      // Extract the numeric part from the letterNumber (e.g., "001/2023" -> 1)
       const lastNumber = parseInt(lastLeave.letterNumber.split('/')[0], 10);
       if (!isNaN(lastNumber)) {
         nextNumber = lastNumber + 1;
       }
     }
 
-    // Add padding to the number (e.g., 1 -> "001")
+    // Pad the number with zeros (e.g., 1 -> "001")
     const paddedNumber = String(nextNumber).padStart(3, '0');
 
+    // Commit the transaction and end the session
     await session.commitTransaction();
     session.endSession();
 
-    return `${paddedNumber}/${currentYear}`; // Format: "001/2023"
+    return `${paddedNumber}/${currentYear}`;
   } catch (error) {
+    // Abort transaction and end session in case of error
     await session.abortTransaction();
     session.endSession();
     console.error('Error generating letter number:', error);
@@ -62,24 +69,37 @@ const generateLetterNumber = async () => {
 
 /**
  * Create a new leave application by an authenticated user.
- * Validates the request, handles file uploads (if applicable), and checks annual leave quota.
+ * This function validates the request, handles file uploads (if applicable),
+ * checks leave-specific rules (e.g., maximum days for sick, maternity, or major leave),
+ * and verifies that the annual leave quota is sufficient.
+ *
+ * @async
+ * @function createLeaveApplicationByUser
  * @param {Object} req - Express request object.
+ *   req.user must contain:
+ *     - userId: The authenticated user's ID.
+ *   req.body should include:
+ *     - startDate: The starting date of the leave.
+ *     - endDate: The ending date of the leave.
+ *     - reason: The reason for the leave.
+ *     - typesOfLeave: The type of leave (allowed: "sick leave", "annual leave", "maternity leave", "major leave").
+ *     - description: Additional description for the leave.
  * @param {Object} res - Express response object.
- * @returns {Promise<void>} - JSON response with success status and data.
+ * @returns {Promise<void>} - JSON response indicating the result of the leave application creation.
  */
 const createLeaveApplicationByUser = async (req, res) => {
   let tempFilePath = null;
   try {
-    // request user id from token
+    // Get user ID from the verified token
     const userId = req.user.userId;
 
-    // Find user id and populate employee
+    // Find the user and populate the employee details (including division)
     const user = await User.findById(userId).populate({
       path: 'employee',
       populate: { path: 'division' },
     });
 
-    // Validation if user and employee exist on database
+    // Validate that the employee data is complete (must include division)
     if (!user?.employee?.division) {
       return res.status(404).json({
         success: false,
@@ -87,17 +107,16 @@ const createLeaveApplicationByUser = async (req, res) => {
       });
     }
 
-    // Request body
+    // Extract leave application details from the request body
     const { startDate, endDate, reason, typesOfLeave, description } = req.body;
 
-    // Validate allowed types of leave
+    // Allowed leave types
     const allowedTypes = [
       'sick leave',
       'annual leave',
       'maternity leave',
       'major leave',
     ];
-
     if (!allowedTypes.includes(typesOfLeave)) {
       return res.status(400).json({
         success: false,
@@ -105,7 +124,7 @@ const createLeaveApplicationByUser = async (req, res) => {
       });
     }
 
-    // Validate start date and end date
+    // Validate that both start and end dates are provided
     if (!startDate || !endDate) {
       return res.status(400).json({
         success: false,
@@ -122,9 +141,10 @@ const createLeaveApplicationByUser = async (req, res) => {
       });
     }
 
+    // Calculate total number of leave days (inclusive)
     const dayLength = Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
 
-    // Validate leave type-specific rules
+    // Leave type-specific validations and file upload handling for sick leave
     let physicianLetter = null;
     if (typesOfLeave === 'sick leave') {
       if (dayLength > 14) {
@@ -133,17 +153,19 @@ const createLeaveApplicationByUser = async (req, res) => {
           message: 'Sick leave cannot exceed 14 days',
         });
       }
-
+      // For sick leave, a physician letter is required
       if (!req.file) {
         return res.status(400).json({
           success: false,
           message: 'Physician letter is required for sick leave',
         });
       }
-
+      // Temporarily store the file path
       tempFilePath = req.file.path;
       try {
+        // Upload the physician letter to Cloudinary
         const uploadResult = await uploadPhysicianLetter(tempFilePath);
+        // Save file information to the Media model
         const media = new Media({
           url: uploadResult.url,
           publicId: uploadResult.publicId,
@@ -153,6 +175,7 @@ const createLeaveApplicationByUser = async (req, res) => {
         await media.save();
         physicianLetter = media._id;
       } finally {
+        // Remove the temporary file regardless of upload success/failure
         await fs.unlink(tempFilePath);
       }
     } else if (typesOfLeave === 'maternity leave' && dayLength > 45) {
@@ -167,7 +190,7 @@ const createLeaveApplicationByUser = async (req, res) => {
       });
     }
 
-    // Check annual leave quota (only validation, no deduction)
+    // Check annual leave quota without deducting it (only validation)
     if (typesOfLeave === 'annual leave') {
       if (user.employee.annualLeaveQuota < dayLength) {
         return res.status(400).json({
@@ -177,10 +200,10 @@ const createLeaveApplicationByUser = async (req, res) => {
       }
     }
 
-    // Generate letter number
+    // Generate a unique letter number for the leave application
     const letterNumber = await generateLetterNumber();
 
-    // Create leave application
+    // Create a new leave application record
     const newLeaveApplication = new LeaveApplication({
       employee: user.employee._id,
       letterNumber,
@@ -197,7 +220,7 @@ const createLeaveApplicationByUser = async (req, res) => {
 
     await newLeaveApplication.save();
 
-    // Notify manager (non-blocking)
+    // Notify the manager asynchronously (non-blocking)
     await notifyManager(
       user.employee.division._id,
       'New Leave Application Submitted',
@@ -210,7 +233,7 @@ const createLeaveApplicationByUser = async (req, res) => {
       data: newLeaveApplication,
     });
   } catch (e) {
-    // Cleanup temporary file if an error occurs
+    // Cleanup temporary file if an error occurs during file upload or processing
     if (tempFilePath) {
       await fs.unlink(tempFilePath).catch(console.error);
     }
@@ -224,26 +247,35 @@ const createLeaveApplicationByUser = async (req, res) => {
 
 /**
  * Review a leave application by a manager.
- * Validates the physician letter for sick leave applications and checks annual leave quota.
+ * Validates the physician letter for sick leave applications, checks annual leave quota,
+ * and updates the review status and notes.
+ *
+ * @async
+ * @function reviewLeaveApplication
  * @param {Object} req - Express request object.
+ *   req.params should include:
+ *     - id: The ID of the leave application to review.
+ *   req.body should include:
+ *     - status: The new status ("reviewed" or "rejected").
+ *     - notes: Optional review notes from the manager.
  * @param {Object} res - Express response object.
- * @returns {Promise<void>} - JSON response with success status and data.
+ * @returns {Promise<void>} - JSON response with the updated leave application.
  */
 const reviewLeaveApplication = async (req, res) => {
   try {
-    // Find leaveApp id
+    // Find the leave application by ID and populate employee and physicianLetter details
     const leaveApplication = await LeaveApplication.findById(req.params.id)
       .populate('employee')
-      .populate('physicianLetter'); // Populate physicianLetter for review
+      .populate('physicianLetter');
 
-    // Check if leave application exist
+    // If leave application is not found, return 404 error
     if (!leaveApplication) {
       return res
         .status(404)
         .json({ success: false, message: 'Leave application not found' });
     }
 
-    // Check if the leave application is already approved or rejected
+    // If the application is already finalized, do not allow further review
     if (
       leaveApplication.status === 'approved' ||
       leaveApplication.status === 'rejected'
@@ -255,17 +287,17 @@ const reviewLeaveApplication = async (req, res) => {
       });
     }
 
-    // request body
-    const { status, notes } = req.body; // 'approved' or 'rejected'
+    // Extract review status and notes from the request body
+    const { status, notes } = req.body; // Expected values: 'reviewed' or 'rejected'
 
-    // Validate status
+    // Validate the new status value
     if (!['reviewed', 'rejected'].includes(status)) {
       return res
         .status(400)
         .json({ success: false, message: 'Invalid review status' });
     }
 
-    // Validate physician letter for sick leave
+    // For sick leave, ensure that a physician letter exists
     if (
       leaveApplication.typesOfLeave === 'sick leave' &&
       !leaveApplication.physicianLetter
@@ -276,7 +308,7 @@ const reviewLeaveApplication = async (req, res) => {
       });
     }
 
-    // Validate annual leave quota
+    // Validate annual leave quota for annual leave applications
     if (leaveApplication.typesOfLeave === 'annual leave') {
       const employee = await Employee.findById(leaveApplication.employee._id);
       if (employee.annualLeaveQuota < leaveApplication.dayLength) {
@@ -287,14 +319,15 @@ const reviewLeaveApplication = async (req, res) => {
       }
     }
 
-    // Update status and review data
+    // Update the review status and add review data
     leaveApplication.status = status;
     leaveApplication.reviewedData = {
-      reviewedBy: req.user.userId, // ID of the manager who reviewed the application
+      reviewedBy: req.user.userId, // Manager's user ID who reviews the application
       reviewedAt: new Date(),
-      notes: notes || '', // Optional notes from the manager
+      notes: notes || '',
     };
 
+    // If rejected, set rejection data and notify the employee
     if (status === 'rejected') {
       leaveApplication.rejectionData = {
         rejectedBy: req.user.userId,
@@ -302,7 +335,7 @@ const reviewLeaveApplication = async (req, res) => {
         rejectionReason: notes,
       };
 
-      // Notify employee
+      // Notify employee of the rejection
       await notifyUser(
         leaveApplication.employee.email,
         'Leave Application Rejected',
@@ -311,7 +344,7 @@ const reviewLeaveApplication = async (req, res) => {
         }</p>`
       );
     } else {
-      // Notify admin for final approval
+      // If reviewed, notify admin for final approval
       await notifyAdmin(
         'Leave Application Needs Approval',
         `<p>Leave application by ${leaveApplication.employee.name} has been reviewed by the Manager. Please approve for final approval.</p>`
@@ -332,26 +365,35 @@ const reviewLeaveApplication = async (req, res) => {
 
 /**
  * Approve a leave application by an admin.
- * Validates the physician letter for sick leave applications and deducts annual leave quota.
+ * Validates the physician letter for sick leave, deducts annual leave quota if applicable,
+ * and updates the application with approval details.
+ *
+ * @async
+ * @function approvalLeaveApplication
  * @param {Object} req - Express request object.
+ *   req.params should include:
+ *     - id: The ID of the leave application to approve.
+ *   req.body should include:
+ *     - approvalNumber: The approval reference number.
+ *     - notes: Optional notes regarding the approval.
  * @param {Object} res - Express response object.
- * @returns {Promise<void>} - JSON response with success status and data.
+ * @returns {Promise<void>} - JSON response with the updated leave application.
  */
 const approvalLeaveApplication = async (req, res) => {
   try {
-    // Find id leave application
+    // Find the leave application by ID and populate related fields
     const leaveApplication = await LeaveApplication.findById(req.params.id)
       .populate('employee')
-      .populate('physicianLetter'); // Populate physicianLetter for verification
+      .populate('physicianLetter');
 
-    // Check if leave application exist
+    // If leave application is not found, return 404 error
     if (!leaveApplication) {
       return res
         .status(404)
         .json({ success: false, message: 'Leave application not found' });
     }
 
-    // Validate status
+    // Only applications with status "reviewed" can be approved
     if (leaveApplication.status !== 'reviewed') {
       return res.status(400).json({
         success: false,
@@ -359,7 +401,7 @@ const approvalLeaveApplication = async (req, res) => {
       });
     }
 
-    // Validate physician letter for sick leave
+    // For sick leave, ensure a physician letter is attached
     if (
       leaveApplication.typesOfLeave === 'sick leave' &&
       !leaveApplication.physicianLetter
@@ -370,7 +412,7 @@ const approvalLeaveApplication = async (req, res) => {
       });
     }
 
-    // Validate and deduct annual leave quota
+    // For annual leave, verify and deduct the annual leave quota
     if (leaveApplication.typesOfLeave === 'annual leave') {
       const employee = await Employee.findById(leaveApplication.employee._id);
       if (employee.annualLeaveQuota < leaveApplication.dayLength) {
@@ -380,15 +422,15 @@ const approvalLeaveApplication = async (req, res) => {
         });
       }
 
-      // Deduct annual leave quota
+      // Deduct the leave days from the employee's annual leave quota
       employee.annualLeaveQuota -= leaveApplication.dayLength;
       await employee.save();
     }
 
-    // Request body
+    // Extract approval details from request body
     const { approvalNumber, notes } = req.body;
 
-    // Update status and approval data
+    // Update application status and approval data
     leaveApplication.status = 'approved';
     leaveApplication.approvalData = {
       approvalNumber,
@@ -399,7 +441,7 @@ const approvalLeaveApplication = async (req, res) => {
 
     await leaveApplication.save();
 
-    // Notify employee
+    // Notify the employee that their leave application has been approved
     await notifyUser(
       leaveApplication.employee.email,
       'Leave Application Approved',

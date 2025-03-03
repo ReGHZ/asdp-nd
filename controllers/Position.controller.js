@@ -1,6 +1,18 @@
+const mongoose = require('mongoose');
 const Position = require('../models/Position');
 
-// Store position
+/**
+ * Create a new position.
+ *
+ * This function creates a new position record in the database using data from the request body.
+ *
+ * @async
+ * @function createPosition
+ * @param {Object} req - Express request object.
+ *   req.body should contain the necessary fields for creating a position.
+ * @param {Object} res - Express response object.
+ * @returns {Promise<void>} JSON response indicating creation success.
+ */
 const createPosition = async (req, res) => {
   try {
     const newPositionFormData = req.body;
@@ -12,7 +24,7 @@ const createPosition = async (req, res) => {
       data: newlyCreatedPosition,
     });
   } catch (e) {
-    console.error(e);
+    console.error('Error creating position:', e);
     return res.status(500).json({
       success: false,
       message: 'Something went wrong!',
@@ -20,12 +32,24 @@ const createPosition = async (req, res) => {
   }
 };
 
-// Get all positions
+/**
+ * Retrieve all positions.
+ *
+ * This function retrieves all positions from the database.
+ * Note: Consider returning an empty array with a 200 status if no positions are found.
+ *
+ * @async
+ * @function getPositions
+ * @param {Object} req - Express request object.
+ * @param {Object} res - Express response object.
+ * @returns {Promise<void>} JSON response with the list of positions.
+ */
 const getPositions = async (req, res) => {
   try {
     const allPositions = await Position.find();
 
     if (allPositions.length === 0) {
+      // Optionally, you might want to return a 200 response with an empty array
       return res.status(404).json({
         success: false,
         message: 'No positions found',
@@ -38,7 +62,7 @@ const getPositions = async (req, res) => {
       data: allPositions,
     });
   } catch (e) {
-    console.error(e);
+    console.error('Error retrieving positions:', e);
     return res.status(500).json({
       success: false,
       message: 'Something went wrong!',
@@ -46,12 +70,31 @@ const getPositions = async (req, res) => {
   }
 };
 
-// Get single position by id
+/**
+ * Retrieve a single position by its ID.
+ *
+ * This function retrieves the details of a position using the provided ID.
+ *
+ * @async
+ * @function getSinglePositionById
+ * @param {Object} req - Express request object.
+ *   req.params.id should contain the position ID.
+ * @param {Object} res - Express response object.
+ * @returns {Promise<void>} JSON response with the position details.
+ */
 const getSinglePositionById = async (req, res) => {
   try {
     const positionId = req.params.id;
-    const positionDetails = await Position.findById(positionId);
 
+    // Validate ObjectId format to prevent cast errors
+    if (!mongoose.Types.ObjectId.isValid(positionId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid Position ID',
+      });
+    }
+
+    const positionDetails = await Position.findById(positionId);
     if (!positionDetails) {
       return res.status(404).json({
         success: false,
@@ -65,7 +108,7 @@ const getSinglePositionById = async (req, res) => {
       data: positionDetails,
     });
   } catch (e) {
-    console.error(e);
+    console.error('Error retrieving position by ID:', e);
     return res.status(500).json({
       success: false,
       message: 'Something went wrong!',
@@ -73,10 +116,31 @@ const getSinglePositionById = async (req, res) => {
   }
 };
 
-// Update position by id
+/**
+ * Update a position by its ID.
+ *
+ * This function updates an existing position with the provided update data.
+ *
+ * @async
+ * @function updatePositionById
+ * @param {Object} req - Express request object.
+ *   req.params.id should contain the position ID.
+ *   req.body should contain the fields to update.
+ * @param {Object} res - Express response object.
+ * @returns {Promise<void>} JSON response with the updated position details.
+ */
 const updatePositionById = async (req, res) => {
   try {
     const positionId = req.params.id;
+
+    // Validate ObjectId format
+    if (!mongoose.Types.ObjectId.isValid(positionId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid Position ID',
+      });
+    }
+
     const updateData = req.body;
     const updatedPosition = await Position.findByIdAndUpdate(
       positionId,
@@ -100,7 +164,7 @@ const updatePositionById = async (req, res) => {
       data: updatedPosition,
     });
   } catch (e) {
-    console.error(e);
+    console.error('Error updating position:', e);
     return res.status(500).json({
       success: false,
       message: 'Something went wrong!',
@@ -108,12 +172,31 @@ const updatePositionById = async (req, res) => {
   }
 };
 
-// Delete position by id
+/**
+ * Delete a position by its ID.
+ *
+ * This function deletes a position record from the database using the provided ID.
+ *
+ * @async
+ * @function deletePositionById
+ * @param {Object} req - Express request object.
+ *   req.params.id should contain the position ID.
+ * @param {Object} res - Express response object.
+ * @returns {Promise<void>} JSON response indicating deletion success.
+ */
 const deletePositionById = async (req, res) => {
   try {
     const positionId = req.params.id;
-    const deletedPosition = await Position.findByIdAndDelete(positionId);
 
+    // Validate ObjectId format
+    if (!mongoose.Types.ObjectId.isValid(positionId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid Position ID',
+      });
+    }
+
+    const deletedPosition = await Position.findByIdAndDelete(positionId);
     if (!deletedPosition) {
       return res.status(404).json({
         success: false,
@@ -127,7 +210,7 @@ const deletePositionById = async (req, res) => {
       data: deletedPosition,
     });
   } catch (e) {
-    console.error(e);
+    console.error('Error deleting position:', e);
     return res.status(500).json({
       success: false,
       message: 'Something went wrong!',
@@ -135,7 +218,6 @@ const deletePositionById = async (req, res) => {
   }
 };
 
-// Export all the functions
 module.exports = {
   createPosition,
   getPositions,
