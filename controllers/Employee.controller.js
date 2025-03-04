@@ -95,21 +95,27 @@ const updateEmployeeDataById = async (req, res) => {
  * Get all employees with filtering, sorting, and pagination using aggregation.
  *
  * This function retrieves a list of employees based on the provided filters,
- * then uses an aggregation pipeline to join associated personal data, ensuring
- * that the sorting applied on employees is preserved in the final result.
+ * joining with Division and Position collections to filter by their names (using regex).
+ * It then applies sorting, pagination, and joins associated personal data.
  *
- * @param {Object} req - Express request object containing query parameters:
+ * Query Parameters:
  *   - page: (Optional) Page number (default: 1).
  *   - limit: (Optional) Number of records per page (default: 10).
  *   - name: (Optional) Filter by employee name.
- *   - division: (Optional) Filter by division.
- *   - position: (Optional) Filter by position.
+ *   - division: (Optional) Filter by division name.
+ *   - position: (Optional) Filter by position name.
  *   - sortBy: (Optional) Field to sort by (default: 'name').
  *   - order: (Optional) Sort order ('asc' or 'desc', default: 'asc').
+ *
+ * @async
+ * @function getAllEmployees
+ * @param {Object} req - Express request object containing the query parameters.
  * @param {Object} res - Express response object.
- * @returns {Object} JSON response containing:
- *   - Data: Array of employee records with embedded personal data.
- *   - Pagination info: totalDocuments, currentPage, totalPages.
+ * @returns {Promise<void>} JSON response with:
+ *   - data: Array of employee records (with joined personal data).
+ *   - totalDocuments: Total number of matching documents.
+ *   - currentPage: Current page number.
+ *   - totalPages: Total pages.
  */
 const getAllEmployees = async (req, res) => {
   try {
@@ -125,25 +131,87 @@ const getAllEmployees = async (req, res) => {
     } = req.query;
     page = Math.max(parseInt(page, 10), 1);
     limit = Math.max(parseInt(limit, 10), 1);
-
-    // Determine sort order (-1 for desc, 1 for asc)
     const sortOrder = order === 'desc' ? -1 : 1;
 
-    // Build filter object based on query parameters
-    const employeeFilter = {};
-    if (name) employeeFilter.name = { $regex: name, $options: 'i' };
-    if (division) employeeFilter.division = division;
-    if (position) employeeFilter.position = position;
+    // Build the aggregation pipeline for filtering by employee name,
+    // division name, and position name.
+    const pipeline = [];
 
-    // Use aggregation pipeline to match, sort, paginate, and join personal data
-    const employees = await Employee.aggregate([
-      { $match: employeeFilter },
-      { $sort: { [sortBy]: sortOrder } },
-      { $skip: (page - 1) * limit },
-      { $limit: limit },
+    // Filter by employee name if provided
+    if (name) {
+      pipeline.push({
+        $match: {
+          name: { $regex: name, $options: 'i' },
+        },
+      });
+    }
+
+    // Lookup division details from the divisions collection
+    pipeline.push(
       {
         $lookup: {
-          from: 'personaldatas', // Collection name for PersonalData (default plural lower-case)
+          from: 'divisions', // Ensure the collection name matches your DB
+          localField: 'division',
+          foreignField: '_id',
+          as: 'division',
+        },
+      },
+      {
+        $unwind: {
+          path: '$division',
+          preserveNullAndEmptyArrays: true,
+        },
+      }
+    );
+
+    // Lookup position details from the positions collection
+    pipeline.push(
+      {
+        $lookup: {
+          from: 'positions', // Ensure the collection name matches your DB
+          localField: 'position',
+          foreignField: '_id',
+          as: 'position',
+        },
+      },
+      {
+        $unwind: {
+          path: '$position',
+          preserveNullAndEmptyArrays: true,
+        },
+      }
+    );
+
+    // Filter by division name if provided
+    if (division) {
+      pipeline.push({
+        $match: {
+          'division.name': { $regex: division, $options: 'i' },
+        },
+      });
+    }
+
+    // Filter by position name if provided
+    if (position) {
+      pipeline.push({
+        $match: {
+          'position.name': { $regex: position, $options: 'i' },
+        },
+      });
+    }
+
+    // Apply sorting and pagination stages
+    pipeline.push(
+      { $sort: { [sortBy]: sortOrder } },
+      { $skip: (page - 1) * limit },
+      { $limit: limit }
+    );
+
+    // Lookup personalData for each employee
+    pipeline.push(
+      {
+        $lookup: {
+          from: 'personaldatas',
           localField: '_id',
           foreignField: 'employee',
           as: 'personalData',
@@ -152,13 +220,60 @@ const getAllEmployees = async (req, res) => {
       {
         $unwind: {
           path: '$personalData',
-          preserveNullAndEmptyArrays: true, // In case an employee has no personal data
+          preserveNullAndEmptyArrays: true,
+        },
+      }
+    );
+
+    // Execute the aggregation pipeline
+    const employees = await Employee.aggregate(pipeline);
+
+    // Build a separate count pipeline for totalDocuments.
+    const countPipeline = [];
+    if (name) {
+      countPipeline.push({
+        $match: {
+          name: { $regex: name, $options: 'i' },
+        },
+      });
+    }
+    countPipeline.push(
+      {
+        $lookup: {
+          from: 'divisions',
+          localField: 'division',
+          foreignField: '_id',
+          as: 'division',
         },
       },
-    ]);
-
-    // Count total documents that match the employee filter
-    const totalDocuments = await Employee.countDocuments(employeeFilter);
+      { $unwind: { path: '$division', preserveNullAndEmptyArrays: true } },
+      {
+        $lookup: {
+          from: 'positions',
+          localField: 'position',
+          foreignField: '_id',
+          as: 'position',
+        },
+      },
+      { $unwind: { path: '$position', preserveNullAndEmptyArrays: true } }
+    );
+    if (division) {
+      countPipeline.push({
+        $match: {
+          'division.name': { $regex: division, $options: 'i' },
+        },
+      });
+    }
+    if (position) {
+      countPipeline.push({
+        $match: {
+          'position.name': { $regex: position, $options: 'i' },
+        },
+      });
+    }
+    countPipeline.push({ $count: 'total' });
+    const countResult = await Employee.aggregate(countPipeline);
+    const totalDocuments = countResult[0] ? countResult[0].total : 0;
 
     return res.status(200).json({
       success: true,
@@ -170,13 +285,12 @@ const getAllEmployees = async (req, res) => {
     });
   } catch (e) {
     console.error('Error retrieving employees:', e);
-    return res
-      .status(500)
-      .json({ success: false, message: 'Something went wrong!' });
+    return res.status(500).json({
+      success: false,
+      message: 'Something went wrong!',
+    });
   }
 };
-
-module.exports = { getAllEmployees };
 
 /**
  * Get detailed information of an employee by ID.
