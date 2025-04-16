@@ -4,7 +4,7 @@
   "description": "Asdp project with node js",
   "main": "server.js",
   "scripts": {
-    "start": "server.js",
+    "start": "node server.js",
     "dev": "nodemon server.js",
     "lint": "eslint"
   },

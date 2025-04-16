@@ -1,32 +1,39 @@
-// config/swagger.js
 const swaggerJsdoc = require('swagger-jsdoc');
 const path = require('path');
+require('dotenv').config(); // pastikan ini dipanggil paling atas
 
-// Import schema dan response
+// Import schemas & responses
 const leaveSchema = require('../docs/schemas/leave');
 const authSchema = require('../docs/schemas/auth');
 const errorSchema = require('../docs/schemas/error');
 const commonResponses = require('../docs/responses/common');
 const leaveResponses = require('../docs/responses/leave');
 
+// Setup servers dari env
+const servers = [
+  {
+    url: process.env.BASE_URL || 'http://localhost:5000/api/',
+    description:
+      process.env.NODE_ENV === 'production'
+        ? 'Production server'
+        : 'Local development server',
+  },
+];
+
+// Swagger options
 const options = {
   definition: {
     openapi: '3.0.0',
     info: {
       title: 'Leave Management API',
       version: '1.0.0',
-      description: 'API untuk manajemen cuti karyawan',
+      description: 'API for employee leave management system',
       contact: {
         name: 'Developer',
         email: 'dev@example.com',
       },
     },
-    servers: [
-      {
-        url: 'http://localhost:5000/api/',
-        description: 'Local development server',
-      },
-    ],
+    servers,
     components: {
       securitySchemes: {
         BearerAuth: {
@@ -53,5 +60,4 @@ const options = {
 };
 
 const specs = swaggerJsdoc(options);
-
 module.exports = specs;
