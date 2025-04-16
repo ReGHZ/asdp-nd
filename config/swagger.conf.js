@@ -12,7 +12,7 @@ const leaveResponses = require('../docs/responses/leave');
 // Setup servers dari env
 const servers = [
   {
-    url: process.env.BASE_URL || 'http://localhost:5000/api/',
+    url: process.env.BASE_URL || 'http://localhost:5000/api',
     description:
       process.env.NODE_ENV === 'production'
         ? 'Production server'
